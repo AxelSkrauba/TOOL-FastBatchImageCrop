@@ -23,6 +23,7 @@ DEFAULT_ASPECT_Y = 1
 DEFAULT_OUTPUT_WIDTH = 512
 DEFAULT_OUTPUT_HEIGHT = 512
 
+
 class VideoTab(tk.Frame):
     
     # params
@@ -83,6 +84,11 @@ class VideoTab(tk.Frame):
 
     # appflow
     last_configure_time = None
+    
+    # auto class
+    class_id = 'N'                      # N to Normal Class and A to Anomaly Class
+    color_rectangle_cropper = 'white'   # white to Normal Class and red to Anomaly Class
+    
     
     def __init__(self, console):
         super().__init__()
@@ -155,6 +161,7 @@ class VideoTab(tk.Frame):
 
         self.scale_output_checkbox.set_value(0)
         self.ask_for_class_name_checkbox.set_value(0)
+
         
         # right frame
         image_frame = tk.LabelFrame(main_frame, text='Image')
@@ -176,7 +183,7 @@ class VideoTab(tk.Frame):
 
         self.rectangle_container = self.image_canvas.create_rectangle(0, 0, self.crop_aspect_x_entry.get_value(),
                                                                       self.crop_aspect_y_entry.get_value(),
-                                                                      outline='white', width=3)
+                                                                      outline=self.color_rectangle_cropper, width=3)
                                                                       
         bottom_controls_container = tk.Frame(image_frame)
         bottom_controls_container.pack(side=tk.BOTTOM, fill=tk.X, expand=0)
@@ -284,7 +291,7 @@ class VideoTab(tk.Frame):
         self.rectangle_container = self.image_canvas.create_rectangle(self.current_mouse_x, self.current_mouse_y,
                                                                       rect_x,
                                                                       rect_y,
-                                                                      outline='white', width=3)
+                                                                      outline=self.color_rectangle_cropper, width=3)
         self.draw_rectangle()
 
         if self.playing:
@@ -307,7 +314,7 @@ class VideoTab(tk.Frame):
             self.output_width_entry.disable()
 
     def video_file_selected(self, path):
-        if not path.endswith(('.mp4', '.avi', '.webm')):
+        if not path.endswith(('.mp4', '.MP4', '.avi', '.AVI', '.webm')):
             self.input_path_entry.clear()
             messagebox.showerror(title='Error', message='Selected file is not supported.')
             return
@@ -341,7 +348,7 @@ class VideoTab(tk.Frame):
                 if not ret:
                     break
                 if current_frame % hop == 0:
-                    target_file = path + '/' + str(current_frame) + '.png'
+                    target_file = path + '/' + str(current_frame) + '.jpg'
                     cv2.imwrite(target_file, frame)
                     self.console.write_info('Extracted frame ' + str(current_frame) + '.')
                 current_frame += 1
@@ -354,6 +361,22 @@ class VideoTab(tk.Frame):
             self.pause_video()
         else:
             self.play_video()
+      
+    def button_class1_callback(self, event):
+        """To configure visual reference parameters and autosave of normal and abnormal classes.
+            Key 1: Set Normal Class workflow
+        """
+        self.image_canvas.itemconfig(self.rectangle_container, outline='white')
+        self.class_id = 'N'      # N to Normal Class and A to Anomaly Class
+        self.color_rectangle_cropper = 'white'
+    
+    def button_class2_callback(self, event):
+        """To configure visual reference parameters and autosave of normal and abnormal classes.
+            Key 2: Set Anomaly Class workflow
+        """
+        self.image_canvas.itemconfig(self.rectangle_container, outline='red')
+        self.class_id = 'A'      # N to Normal Class and A to Anomaly Class
+        self.color_rectangle_cropper = 'red'
 
     def draw_rectangle(self):
         rect_aspect_ratio = self.crop_aspect_y_entry.get_value() / self.crop_aspect_x_entry.get_value()
@@ -361,6 +384,7 @@ class VideoTab(tk.Frame):
         rect_half_y = int(rect_half_x * rect_aspect_ratio)
         canvas_half_x = self.image_canvas.winfo_width() / 2
         canvas_half_y = self.image_canvas.winfo_height() / 2
+        
 
         # left
         if self.current_image is not None:
@@ -419,16 +443,21 @@ class VideoTab(tk.Frame):
         self.bind_all("<Button-4>", self.canvas_mousewheel)
         self.bind_all("<Button-5>", self.canvas_mousewheel)
         self.bind_all('<space>', self.space_button_callback)
+        self.bind_all('1', self.button_class1_callback)
+        self.bind_all('2', self.button_class2_callback)
 
     def unbind_actions_from_canvas(self, event):
         self.unbind_all("<MouseWheel>")
         self.unbind_all("<Button-4>")
         self.unbind_all("<Button-5>")
         self.unbind_all('<space>')
+        self.unbind_all('1')
+        self.unbind_all('2')
 
     def canvas_mousewheel(self, event):
         if self.current_image is not None:
             if event.num == 4 or event.delta == -120:
+                
                 rect_ratio = self.crop_aspect_y_entry.get_value() / self.crop_aspect_x_entry.get_value()
                 new_multiplier_step = self.current_crop_rect_multiplier_step + 1
 
@@ -440,8 +469,14 @@ class VideoTab(tk.Frame):
                 self.current_crop_rect_multiplier_step = self.current_crop_rect_multiplier_step - 1
                 if self.current_crop_rect_multiplier_step < CROP_RECT_STEP_MIN:
                     self.current_crop_rect_multiplier_step = CROP_RECT_STEP_MIN
+            
 
         self.draw_rectangle()
+        try:
+            self.console.write_info('DIM Recorte: {}'.format(self.get_image_inside_rectangle()))
+        except:
+            self.console.write_info('DIM Recorte: {}'.format("Cargar video primero."))
+        
 
     def canvas_mouseclick(self, event):
         # check output path given
@@ -472,7 +507,7 @@ class VideoTab(tk.Frame):
                                               width=self.output_width_entry.get_value())
 
         output_basefilename = os.path.basename(self.input_path_entry.get_value()).split('.')[0]
-        output_image_name = output_basefilename + '_' + str(self.crop_count) + '.png'
+        output_image_name = output_basefilename + '_' + str(int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))) + '_{}_'.format(self.class_id) + str(self.crop_count) + '.jpg'
         output_image_description_name = output_basefilename + '_' + str(self.crop_count) + '.txt'
 
         # check output path
